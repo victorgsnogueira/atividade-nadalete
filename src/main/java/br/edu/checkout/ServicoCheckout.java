@@ -23,35 +23,11 @@ public final class ServicoCheckout {
 
     public ResultadoCheckout finalizar(SolicitacaoCheckout solicitacao) {
         validar(solicitacao);
-        BigDecimal total = solicitacao.precoUnitario()
-                .multiply(BigDecimal.valueOf(solicitacao.quantidade()));
-        if (!estoqueGateway.reservar(solicitacao.sku(), solicitacao.quantidade())) {
-            throw new EstoqueInsuficienteException();
-        }
-        Pagamento pagamento;
-        try {
-            pagamento = pagamentoGateway.cobrar(solicitacao.clienteId(), total);
-        } catch (FalhaPagamentoException falha) {
-            estoqueGateway.liberar(solicitacao.sku(), solicitacao.quantidade());
-            throw falha;
-        }
-        if (!pagamento.aprovado()) {
-            estoqueGateway.liberar(solicitacao.sku(), solicitacao.quantidade());
-            throw new PagamentoRecusadoException();
-        }
-        String numeroPedido = pedidoRepository.salvar(new PedidoConfirmado(
-                solicitacao.clienteId(),
-                solicitacao.email(),
-                solicitacao.sku(),
-                solicitacao.quantidade(),
-                total,
-                pagamento.transacaoId()));
-        boolean notificacaoEnviada = true;
-        try {
-            notificador.enviarConfirmacao(solicitacao.email(), numeroPedido, total);
-        } catch (FalhaNotificacaoException falha) {
-            notificacaoEnviada = false;
-        }
+        BigDecimal total = calcularTotal(solicitacao);
+        reservarEstoque(solicitacao);
+        Pagamento pagamento = cobrar(solicitacao, total);
+        String numeroPedido = registrarPedido(solicitacao, total, pagamento);
+        boolean notificacaoEnviada = notificar(solicitacao.email(), numeroPedido, total);
         return new ResultadoCheckout(numeroPedido, total, notificacaoEnviada);
     }
 
@@ -75,5 +51,55 @@ public final class ServicoCheckout {
 
     private boolean emBranco(String texto) {
         return texto == null || texto.isBlank();
+    }
+
+    private BigDecimal calcularTotal(SolicitacaoCheckout solicitacao) {
+        return solicitacao.precoUnitario()
+                .multiply(BigDecimal.valueOf(solicitacao.quantidade()));
+    }
+
+    private void reservarEstoque(SolicitacaoCheckout solicitacao) {
+        if (!estoqueGateway.reservar(solicitacao.sku(), solicitacao.quantidade())) {
+            throw new EstoqueInsuficienteException();
+        }
+    }
+
+    private Pagamento cobrar(SolicitacaoCheckout solicitacao, BigDecimal total) {
+        Pagamento pagamento;
+        try {
+            pagamento = pagamentoGateway.cobrar(solicitacao.clienteId(), total);
+        } catch (FalhaPagamentoException falha) {
+            liberarEstoque(solicitacao);
+            throw falha;
+        }
+        if (!pagamento.aprovado()) {
+            liberarEstoque(solicitacao);
+            throw new PagamentoRecusadoException();
+        }
+        return pagamento;
+    }
+
+    private void liberarEstoque(SolicitacaoCheckout solicitacao) {
+        estoqueGateway.liberar(solicitacao.sku(), solicitacao.quantidade());
+    }
+
+    private String registrarPedido(
+            SolicitacaoCheckout solicitacao, BigDecimal total, Pagamento pagamento) {
+        return pedidoRepository.salvar(new PedidoConfirmado(
+                solicitacao.clienteId(),
+                solicitacao.email(),
+                solicitacao.sku(),
+                solicitacao.quantidade(),
+                total,
+                pagamento.transacaoId()));
+    }
+
+    private boolean notificar(String email, String numeroPedido, BigDecimal total) {
+        try {
+            notificador.enviarConfirmacao(email, numeroPedido, total);
+            return true;
+        } catch (FalhaNotificacaoException falha) {
+            return false;
+        }
     }
 }
