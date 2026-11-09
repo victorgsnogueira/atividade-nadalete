@@ -16,6 +16,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
@@ -116,6 +117,23 @@ class ServicoCheckoutTest {
         assertEquals(3, pedido.quantidade());
         assertEquals(total, pedido.total());
         assertEquals(TRANSACAO_ID, pedido.transacaoId());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "1, 19.90, 19.90",
+        "3, 19.90, 59.70",
+        "3, 0.005, 0.015"
+    })
+    void deveCalcularTotalExatoECobrarEsseValor(
+            int quantidade, BigDecimal precoUnitario, BigDecimal totalEsperado) {
+        aprovarCompra(quantidade, totalEsperado);
+
+        ResultadoCheckout resultado =
+                servico.finalizar(solicitacao(quantidade, precoUnitario));
+
+        assertEquals(totalEsperado, resultado.total());
+        verify(pagamentoGateway, times(1)).cobrar(CLIENTE_ID, totalEsperado);
     }
 
     private void aprovarCompra(int quantidade, BigDecimal total) {
