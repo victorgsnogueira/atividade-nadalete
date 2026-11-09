@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -183,6 +184,21 @@ class ServicoCheckoutTest {
         verify(pagamentoGateway, times(1)).cobrar(CLIENTE_ID, total);
         verify(estoqueGateway, times(1)).liberar(SKU, 3);
         verifyNoInteractions(pedidoRepository, notificador);
+    }
+
+    @Test
+    void deveManterCompraQuandoNotificacaoFalhar() {
+        BigDecimal total = new BigDecimal("59.70");
+        aprovarCompra(3, total);
+        doThrow(new FalhaNotificacaoException("servidor de e-mail fora do ar"))
+                .when(notificador).enviarConfirmacao(EMAIL, NUMERO_PEDIDO, total);
+
+        ResultadoCheckout resultado = servico.finalizar(solicitacao(3, PRECO));
+
+        assertEquals(new ResultadoCheckout(NUMERO_PEDIDO, total, false), resultado);
+        verify(pagamentoGateway, times(1)).cobrar(CLIENTE_ID, total);
+        verify(pedidoRepository, times(1)).salvar(any(PedidoConfirmado.class));
+        verify(estoqueGateway, never()).liberar(SKU, 3);
     }
 
     private void aprovarCompra(int quantidade, BigDecimal total) {
