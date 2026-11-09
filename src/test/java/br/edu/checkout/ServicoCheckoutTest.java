@@ -1,7 +1,13 @@
 package br.edu.checkout;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.util.stream.Stream;
@@ -23,6 +29,8 @@ class ServicoCheckoutTest {
     private static final String EMAIL = "cliente@loja.com";
     private static final String SKU = "SKU-100";
     private static final BigDecimal PRECO = new BigDecimal("19.90");
+    private static final String TRANSACAO_ID = "tx-123";
+    private static final String NUMERO_PEDIDO = "PED-1";
 
     @Mock
     private EstoqueGateway estoqueGateway;
@@ -59,6 +67,26 @@ class ServicoCheckoutTest {
                 IllegalArgumentException.class, () -> servico.finalizar(solicitacao));
         verifyNoInteractions(
                 estoqueGateway, pagamentoGateway, pedidoRepository, notificador);
+    }
+
+    @Test
+    void deveConfirmarCompraAprovadaENotificarCliente() {
+        BigDecimal total = new BigDecimal("59.70");
+        when(estoqueGateway.reservar(SKU, 3)).thenReturn(true);
+        when(pagamentoGateway.cobrar(CLIENTE_ID, total))
+                .thenReturn(new Pagamento(true, TRANSACAO_ID));
+        when(pedidoRepository.salvar(any(PedidoConfirmado.class)))
+                .thenReturn(NUMERO_PEDIDO);
+
+        ResultadoCheckout resultado = servico.finalizar(solicitacao(3, PRECO));
+
+        assertEquals(new ResultadoCheckout(NUMERO_PEDIDO, total, true), resultado);
+        verify(notificador, times(1)).enviarConfirmacao(EMAIL, NUMERO_PEDIDO, total);
+        verify(estoqueGateway, never()).liberar(SKU, 3);
+    }
+
+    private SolicitacaoCheckout solicitacao(int quantidade, BigDecimal precoUnitario) {
+        return new SolicitacaoCheckout(CLIENTE_ID, EMAIL, SKU, quantidade, precoUnitario);
     }
 
     static Stream<SolicitacaoCheckout> solicitacoesInvalidas() {
