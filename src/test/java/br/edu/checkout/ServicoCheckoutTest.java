@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -96,6 +97,25 @@ class ServicoCheckoutTest {
         ordem.verify(pagamentoGateway, times(1)).cobrar(CLIENTE_ID, total);
         ordem.verify(pedidoRepository, times(1)).salvar(any(PedidoConfirmado.class));
         ordem.verify(notificador, times(1)).enviarConfirmacao(EMAIL, NUMERO_PEDIDO, total);
+    }
+
+    @Test
+    void deveRegistrarPedidoComDadosDaSolicitacaoTotalETransacao() {
+        BigDecimal total = new BigDecimal("59.70");
+        aprovarCompra(3, total);
+
+        servico.finalizar(solicitacao(3, PRECO));
+
+        ArgumentCaptor<PedidoConfirmado> captor =
+                ArgumentCaptor.forClass(PedidoConfirmado.class);
+        verify(pedidoRepository, times(1)).salvar(captor.capture());
+        PedidoConfirmado pedido = captor.getValue();
+        assertEquals(CLIENTE_ID, pedido.clienteId());
+        assertEquals(EMAIL, pedido.email());
+        assertEquals(SKU, pedido.sku());
+        assertEquals(3, pedido.quantidade());
+        assertEquals(total, pedido.total());
+        assertEquals(TRANSACAO_ID, pedido.transacaoId());
     }
 
     private void aprovarCompra(int quantidade, BigDecimal total) {
