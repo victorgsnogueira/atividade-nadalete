@@ -46,8 +46,13 @@ public final class ServicoCheckout {
                 solicitacao.quantidade(),
                 total,
                 pagamento.transacaoId()));
-        notificador.enviarConfirmacao(solicitacao.email(), numeroPedido, total);
-        return new ResultadoCheckout(numeroPedido, total, true);
+        boolean notificacaoEnviada = true;
+        try {
+            notificador.enviarConfirmacao(solicitacao.email(), numeroPedido, total);
+        } catch (FalhaNotificacaoException falha) {
+            notificacaoEnviada = false;
+        }
+        return new ResultadoCheckout(numeroPedido, total, notificacaoEnviada);
     }
 
     private void validar(SolicitacaoCheckout solicitacao) {
